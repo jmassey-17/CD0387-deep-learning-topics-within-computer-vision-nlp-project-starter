@@ -7,13 +7,14 @@ import torchvision
 import torchvision.transforms as transforms
 import argparse
 import time
-from smdebug import modes
-from smdebug.pytorch import get_hook
 from torchvision import datasets, models
 import logging
 import os
 import sys
-
+try:
+  import smdebug
+except:
+  pass
 # Setup device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -22,8 +23,10 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
-# Initialize debugging hook
-hook = get_hook(create_if_not_exists=True)
+# # Initialize debugging hook
+# hook = get_hook(create_if_not_exists=True)
+
+# print(hook)
 
 def test(model, test_loader, criterion):
     '''
@@ -50,9 +53,9 @@ def test(model, test_loader, criterion):
     accuracy = correct / total
     print(f"Testing Loss: {total_loss:.4f}, Testing Accuracy: {accuracy:.4f}")
     logger.info(f"Testing Loss: {total_loss:.4f}, Testing Accuracy: {accuracy:.4f}")
-    if hook:
-        hook.record_tensor_value("Testing Loss", total_loss)
-        hook.record_tensor_value("Testing Accuracy", accuracy)
+    #if hook: # doesnt work...
+    #    hook.record_tensor_value("Testing Loss", total_loss)
+    #    hook.record_tensor_value("Testing Accuracy", accuracy)
 
 
 def train(model, train_loader, criterion, optimizer, epochs):
@@ -60,7 +63,6 @@ def train(model, train_loader, criterion, optimizer, epochs):
     Train function to optimize model on training dataset
     '''
     model.to(device)
-
     for epoch in range(epochs):
         model.train()
         train_loss = 0
@@ -72,10 +74,9 @@ def train(model, train_loader, criterion, optimizer, epochs):
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
-
             # Save intermediate training metrics to hook for debugging
-            if hook and hook.has_default_writer():
-                hook.record_tensor_value("Training Loss", train_loss / len(train_loader))
+            #if hook:
+            #    hook.record_tensor_value("Training Loss", train_loss / len(train_loader))
         
         logger.info(f"Epoch [{epoch+1}/{epochs}], Loss: {train_loss/len(train_loader):.4f}")
     return model
@@ -91,7 +92,6 @@ def net(num_classes):
     for param in model.parameters(): 
         param.requires_grad = False
     
-    # Update the final fully connected layer to match the number of classes
     model.fc = nn.Sequential(
         nn.Linear(model.fc.in_features, 256), 
         nn.ReLU(),  
@@ -100,13 +100,13 @@ def net(num_classes):
     )
     
     # Register model to debugging hook
-    if hook:
-        hook.register_module(model)
+    #if hook:
+    #    hook.register_module(model)
     return model
 
 
 from PIL import ImageFile
-ImageFile.LOAD_TRUNCATED_IMAGES = True  # Add this to handle truncated images
+ImageFile.LOAD_TRUNCATED_IMAGES = True  
 
 def create_data_loaders(data_path, batch_size):
     '''
@@ -131,7 +131,7 @@ def create_data_loaders(data_path, batch_size):
 
     # Define datasets
     trainset = datasets.ImageFolder(
-        root=train_path,
+        root=train_path, 
         transform=transform_train
     )
     testset = datasets.ImageFolder(
@@ -139,7 +139,7 @@ def create_data_loaders(data_path, batch_size):
         transform=transform_test
     )
     validset = datasets.ImageFolder(
-        root=valid_path,
+        root=valid_path, 
         transform=transform_test
     )
 
@@ -155,8 +155,8 @@ def create_data_loaders(data_path, batch_size):
         shuffle=False
     )
     valid_loader = torch.utils.data.DataLoader(
-        validset,
-        batch_size=batch_size,
+        validset, 
+        batch_size=batch_size, 
         shuffle=False
     )
 
@@ -166,13 +166,13 @@ def create_data_loaders(data_path, batch_size):
 
 def main(args):
     '''
-    Main function to initialize model, train, test, and save it
+    Main function to initialize model, train, test, and save it as TorchScript
     '''
     logger.info("Starting training job")
     
     # Initialize model
     model = net(num_classes=133)
-    
+
     # Define loss and optimizer
     loss_criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -186,11 +186,15 @@ def main(args):
     # Test the model
     test(model, test_loader, loss_criterion)
     
-    # Save the model
-    save_path = os.path.join(args.model_dir, 'model.pth')
-    logger.info(f"Saving model to {save_path}")
-    torch.save(model.state_dict(), save_path)
-    logger.info("Model saved successfully")
+    # Convert to TorchScript
+    example_input = torch.randn(1, 3, 224, 224, device=device)  # Example input tensor for resnet50
+    scripted_model = torch.jit.trace(model.to(device), example_input)
+    
+    # Save the TorchScript model
+    save_path = os.path.join(args.model_dir, 'model.pt')
+    logger.info(f"Saving TorchScript model to {save_path}")
+    torch.jit.save(scripted_model, save_path)
+    logger.info("TorchScript model saved successfully")
 
 
 if __name__ == '__main__':
