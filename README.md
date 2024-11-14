@@ -2,7 +2,7 @@
 
 AWS Sagemaker project to train a pretrained model that can perform image classification by using the Sagemaker profiling, debugger, hyperparameter tuning and allowing queries to the best model via a deployed endpoint. This is done on the dog breed classication data set.
 
-![Dog Predictions](./Screenshots/dogPredictions.png)
+![Dog Predictions](Screenshots/dogPredictions.png)
 
 
 ## Project Set Up and Installation
