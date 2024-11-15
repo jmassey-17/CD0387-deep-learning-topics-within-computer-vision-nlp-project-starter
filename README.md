@@ -76,6 +76,7 @@ Debugging and profiling was used with the following rules are included here: [Pr
     - Significant fluctuation detected (5th percentile: 0.0%, 95th percentile: 57%).
  
 Profiling revelaed loss is increasing towards the end of the training stage. Fewer epochs should be used going forward. 
+
 ![Loss Behaviour](./Screenshots/Loss.PNG)
 
 ## Model Deployment
