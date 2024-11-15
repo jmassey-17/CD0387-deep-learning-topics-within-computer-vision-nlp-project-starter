@@ -11,10 +11,7 @@ from torchvision import datasets, models
 import logging
 import os
 import sys
-try:
-    import smdebug.pytorch as smd  # Use smdebug for SageMaker Debugger
-except:
-    pass
+from smdebug.pytorch import get_hook, modes, Hook
 
 # Setup device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -36,7 +33,7 @@ def test(model, test_loader, criterion, hook):
     model.eval()
 
     if hook:
-        hook.set_mode(smd.modes.EVAL)  # Set to EVAL mode for testing
+        hook.set_mode(modes.EVAL)  # Set to EVAL mode for testing
     
     # Disable gradient computation for testing
     with torch.no_grad():
@@ -53,11 +50,6 @@ def test(model, test_loader, criterion, hook):
     accuracy = correct / total
     print(f"Testing Loss: {total_loss:.4f}, Testing Accuracy: {accuracy:.4f}")
     logger.info(f"Testing Loss: {total_loss:.4f}, Testing Accuracy: {accuracy:.4f}")
-    
-    # Record metrics to hook
-    #if hook:
-    #    hook.record_tensor("Testing Loss", total_loss)
-    #    hook.record_tensor("Testing Accuracy", accuracy)
 
 
 def train(model, train_loader, criterion, optimizer, epochs, hook):
@@ -65,9 +57,9 @@ def train(model, train_loader, criterion, optimizer, epochs, hook):
     Train function to optimize model on training dataset
     '''
     model.to(device)
-    if hook:  # Register hook with the model
-        #hook.register_module(model)
-        hook.set_mode(smd.modes.TRAIN)  # Set to TRAIN mode for training
+    # Set to training mode
+    if hook:  
+        hook.set_mode(modes.TRAIN)  
         
     for epoch in range(epochs):
         model.train()
@@ -80,16 +72,12 @@ def train(model, train_loader, criterion, optimizer, epochs, hook):
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
-
-            # Save intermediate training metrics to hook for debugging
-            #if hook:
-            #    hook.record_tensor("Training Loss", train_loss / len(train_loader))
         
         logger.info(f"Epoch [{epoch+1}/{epochs}], Loss: {train_loss/len(train_loader):.4f}")
     return model
 
 
-def net(num_classes, hook):
+def net(num_classes):
     '''
     Initializes and returns a pretrained model with modified output layer
     '''
@@ -105,10 +93,7 @@ def net(num_classes, hook):
         nn.Linear(256, num_classes),
         nn.LogSoftmax(dim=1)
     )
-    
-    # Register model to debugging hook not needed twice
-    #if hook:
-    #    hook.register_module(model)
+
     return model
 
 
@@ -178,17 +163,17 @@ def main(args):
     logger.info("Starting training job")
 
      #Define hook
-    hook = smd.Hook.create_from_json_file()
-    #hook.register_hook(model)
+    hook = Hook.create_from_json_file()
+    
+    
     
     # Initialize model
-    model = net(133, hook)
+    model = net(133)
+    hook.register_hook(model)
 
     # Define loss and optimizer
     loss_criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-
-    hook.register_loss(loss_criterion) 
     
     # Load data
     train_loader, test_loader, valid_loader = create_data_loaders(args.data_path, args.batch_size)
